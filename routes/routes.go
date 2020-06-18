@@ -5,11 +5,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	//controller "./controller"
+	controller "github.com/amirsorouri00/arvanwallet/controller"
 )
 
 func Routes(router *gin.Engine) {
 	router.GET("/", welcomeToWallet)
+	router.GET("/allusers", controller.GetAllUsers)
+	router.POST("/adduser", controller.AddUser)
+	router.GET("alltransactions", controller.GetAllTransactions)
+	router.POST("/addtransaction", controller.AddTransaction)
+	//router.POST("/gift/:gitcode")
 	router.NoRoute(notFound)
 }
 
