@@ -25,8 +25,8 @@ func ConnectDB() *pg.DB {
 	}
 
 	log.Printf("Connected to DB")
-	controller.CreateUserTable(db)
 	controller.CreateTransactionTable(db)
+	controller.CreateUserTable(db)
 
 	// Pass DB Connection to the controller
 	controller.InitiateDB(db)

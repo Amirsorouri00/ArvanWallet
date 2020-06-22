@@ -14,7 +14,9 @@ func Routes(router *gin.Engine) {
 	router.POST("/adduser", controller.AddUser)
 	router.GET("alltransactions", controller.GetAllTransactions)
 	router.POST("/addtransaction", controller.AddTransaction)
-	//router.POST("/gift/:gitcode")
+	
+	// Gift APIs
+	
 	router.NoRoute(notFound)
 }
 
