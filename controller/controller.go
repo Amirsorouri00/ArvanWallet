@@ -12,7 +12,7 @@ import (
 )
 
 type User struct {
-	ID        		string    		`json:"id"`	// #CellPhone
+	Id        		string    		`json:"id"`	// #CellPhone
 	Cash	  		float64			`json:"cash"`
 	Transactions	[]*Transaction	
 	CreatedAt 		time.Time 		
@@ -20,10 +20,10 @@ type User struct {
 }
 
 type Transaction struct {
-	ID        string    `json:"id"`
+	Id        string    `json:"id"`
 	Amount	  float64	`json:"amount"`
-	Type 	  bool		`json:"type"` // [false == Increase, true == Decrease]
-	Gift	  bool		`json:"gift"` // [false == No, true == Yes]
+	Type 	  bool		`json:"type"` // [false = Increase, true = Decrease]
+	Gift	  bool		`json:"gift"` // [false = No, true = Yes]
 	GiftId	  string	`json:",use_zero"` // zero/GiftID
 	UserId	  string			
 	CreatedAt time.Time 
