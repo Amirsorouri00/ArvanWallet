@@ -95,10 +95,10 @@ func GetAllUsers(c *gin.Context) {
 func AddUser(c *gin.Context) {
 	var user User
 	c.BindJSON(&user)
-	id := user.ID
+	id := user.Id
 
 	insertError := dbConnect.Insert(&User{
-		ID: id,
+		Id: id,
 		Cash: 0,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
@@ -125,7 +125,7 @@ func GetSingleUser(user *User) int {
 	err := dbConnect.Select(user)
 	if err != nil {
 		log.Printf("Error while getting a single todo, Reason: %v\n", err)
-		log.Printf("user id = %v\n", user.ID)
+		log.Printf("user id = %v\n", user.Id)
 		return 0
 	}
 	return 1
@@ -171,9 +171,9 @@ func AddTransaction(c *gin.Context) {
 	transType := transaction.Type
 	userId := transaction.User
 
-	user := &User{ID: userId}
+	user := &User{Id: userId}
 	err := GetSingleUser(user)
-	log.Printf("user id = %v and cash = %v\n", user.ID, user.Cash)
+	log.Printf("user id = %v and cash = %v\n", user.Id, user.Cash)
 	if err == 0 {
 		c.JSON(http.StatusNotFound, gin.H{
 			"status":  http.StatusNotFound,
@@ -206,11 +206,11 @@ func AddTransaction(c *gin.Context) {
 		}
 		
 		insertError := dbConnect.Insert(&Transaction{
-			ID: guuid.New().String(),
+			Id: guuid.New().String(),
 			Amount: amount,
 			Type: transType,
 			Gift: false,
-			UserId: user.ID,
+			UserId: user.Id,
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		})
