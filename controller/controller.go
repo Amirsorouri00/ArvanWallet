@@ -2,8 +2,12 @@ package controller
 
 import (
 	"log"
-	"net/http"
+	"fmt"
 	"time"
+	"bytes"
+	"net/http"
+	"io/ioutil"
+	"encoding/json"
 
 	"github.com/gin-gonic/gin"
 	orm "github.com/go-pg/pg/v9/orm"
@@ -90,6 +94,28 @@ func GetAllUsers(c *gin.Context) {
 	return
 }
 
+// See Cash in Wallet OK
+func SeeWalletCash(c *gin.Context) {
+	var user User
+	c.BindJSON(&user)
+
+	err := dbConnect.Model(&user).Where("id = ?", user.Id).Select()
+	if err != nil {
+		log.Printf("SeeWalletCash: Error while getting user's data from db, Reason: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  http.StatusInternalServerError,
+			"message": "Something went wrong",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  http.StatusOK,
+		"message": "User cash in wallet received",
+		"cash": user.Cash,
+	})
+	return
+}
 
 // Add User OK
 func AddUser(c *gin.Context) {
@@ -195,16 +221,6 @@ func AddTransaction(c *gin.Context) {
 			updateCash = user.Cash + amount
 		}
 
-		_, error1 := dbConnect.Model(&User{}).Set("cash = ?", updateCash).Where("id = ?", userId).Update()
-		if error1 != nil {
-			log.Printf("Error, Reason: %v\n", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": 500,
-				"message":  "Something went wrong while updating user cash.",
-			})
-			return
-		}
-		
 		insertError := dbConnect.Insert(&Transaction{
 			Id: guuid.New().String(),
 			Amount: amount,
@@ -215,7 +231,7 @@ func AddTransaction(c *gin.Context) {
 			UpdatedAt:  time.Now(),
 		})
 		if insertError != nil {
-			log.Printf("Error while inserting new transaction into db, Reason: %v\n", insertError)
+			log.Printf("AddTransaction: Error while inserting new transaction into db, Reason: %v\n", insertError)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status":  http.StatusInternalServerError,
 				"message": "Something went wrong while adding transaction",
@@ -223,10 +239,177 @@ func AddTransaction(c *gin.Context) {
 			return
 		}
 
+		_, error1 := dbConnect.Model(&User{}).Set("cash = ?", updateCash).Where("id = ?", userId).Update()
+		if error1 != nil {
+			log.Printf("AddTransaction: Error, Reason: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": 500,
+				"message":  "Something went wrong while updating user cash.",
+			})
+			return
+		}
+		
 		c.JSON(http.StatusCreated, gin.H{
 			"status":  http.StatusCreated,
 			"message": "Transaction created Successfully",
 		})
 		return
 	}
+}
+
+
+type GiftChargeType struct {
+	UserId   string `json:"user_id"`
+	GiftCode string `json:"gift_code"`
+}
+
+type GetGiftType struct {
+	Code string `json:"code"`
+}
+
+type PostReqReturnType struct {
+	Status     int      `json:"status"`
+	GiftAmount float64  `json:"gift_amount"`
+}
+
+// Gift Charge OK
+func GiftCharge(c *gin.Context) {
+	var req GiftChargeType
+	c.BindJSON(&req)
+
+	var user User
+	err := dbConnect.Model(&user).Where("id = ?", req.UserId).Select()
+	if err != nil {
+		log.Printf("GiftCharge: Error while getting user, Reason: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  http.StatusInternalServerError,
+			"message": "Something went wrong",
+		})
+		return
+	}
+
+	var trans Transaction
+	count, err2 := dbConnect.Model(&trans).Where("gift_id = ?", req.GiftCode).Where("user_id = ?", req.UserId).Count()
+	if err2 != nil {
+		log.Printf("GiftCharge: Error while getting user, Reason: %v\n", err2)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  http.StatusInternalServerError,
+			"message": "Something went wrong",
+		})
+		return
+	}
+	if count > 0 {
+		log.Printf("GiftCharge: This user has charged his wallet with this gift code before.\n")
+		c.JSON(http.StatusForbidden, gin.H{
+			"status":  http.StatusForbidden,
+			"message": "Sorry, you have already charged your wallet with this code before.",
+		})
+		return
+	}
+
+	url := "http://localhost:8002/getgift"
+	fmt.Println("URL:>", url)
+	code := GetGiftType{Code: req.GiftCode}
+	jsonStr, err := json.Marshal(code)
+	var resp PostReqReturnType
+	resp = MakePostRequest(url, jsonStr, "application/json")
+	// i, err := strconv.Atoi(resp.Status)
+	
+	if resp.Status != http.StatusOK {
+		log.Printf("GiftCharge: Error on DiscountService returned status, Status: %v\n", resp.Status)
+		c.JSON(resp.Status, gin.H{
+			"status": resp.Status,
+			"message":  "Something went wrong",
+		})
+		return
+	}
+
+	amount := resp.GiftAmount  // update
+	insertError := dbConnect.Insert(&Transaction{
+		Id: guuid.New().String(),
+		Amount: amount,
+		Type: false,
+		Gift: true,
+		GiftId: req.GiftCode,
+		UserId: user.Id,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	})
+	if insertError != nil {
+		log.Printf("Error while inserting new transaction into db, Reason: %v\n", insertError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  http.StatusInternalServerError,
+			"message": "Something went wrong while adding transaction",
+		})
+		return
+	}
+
+	updateCash := user.Cash + resp.GiftAmount
+	_, error1 := dbConnect.Model(&User{}).Set("cash = ?", updateCash).Where("id = ?", user.Id).Update()
+	if error1 != nil {
+		log.Printf("GiftCharge: Error, Reason: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status": 500,
+			"message":  "Something went wrong while updating user cash.",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  http.StatusOK,
+		"message": "Wallet charged.",
+	})
+	return
+}
+
+// Who Gets Gift by code OK
+func WhoGetsGift(c *gin.Context) {
+	var req GiftChargeType
+	c.BindJSON(&req)
+	
+	var user User
+	err := dbConnect.Model(&user).Relation("Transactions",
+		func(q *orm.Query) (*orm.Query, error) {
+		return q.Where("gift_id = ?", req.GiftCode), nil}).Select()
+	if err != nil {
+		log.Printf("WhoGetsGift: Error while getting data from db, Reason: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  http.StatusInternalServerError,
+			"message": "Something went wrong",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"status":  http.StatusOK,
+		"message": "Data gathered from Database successfully.",
+		"data": user,
+	})
+	return
+}
+
+// Make Post Request based on Inputs OK
+func MakePostRequest(url string, jsonStr []byte, contentType string) PostReqReturnType {
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	if err != nil {
+        panic(err)
+    }
+	req.Header.Set("Content-Type", contentType)
+
+	client := &http.Client{}
+    resp, err2 := client.Do(req)
+    if err2 != nil {
+        panic(err2)
+    }
+	defer resp.Body.Close()
+	
+	fmt.Println("response Status:", resp.Status)
+    fmt.Println("response Headers:", resp.Header)
+	
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println("response Body:", string(body))
+
+	var res PostReqReturnType
+	json.Unmarshal([]byte(body), &res)
+	return res
 }
